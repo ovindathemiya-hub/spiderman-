@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NextGen Console UI — Full Screen</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0a0a0a;
+      overflow: hidden;
+    }
+
+    /* Smooth wallpaper crossfade & subtle zoom */
+    .wallpaper-layer {
+      transition: opacity 0.55s ease, transform 0.8s ease;
+    }
+
+    /* Console tile transitions */
+    .game-tile {
+      transition: all 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .game-tile:hover {
+      transform: translateY(-4px);
+    }
+
+    .game-tile.active {
+      transform: scale(1.05) translateY(-6px);
+      box-shadow: 0 0 0 2.5px rgba(255, 255, 255, 0.92), 0 22px 45px rgba(0, 0, 0, 0.8);
+    }
+
+    /* Hide scrollbar on game row */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Custom Glassmorphism */
+    .glass-dock {
+      background: rgba(15, 18, 24, 0.55);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .glass-pill {
+      background: rgba(15, 18, 24, 0.7);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    /* Bottom Dock Button Glass Popup Hover */
+    .dock-btn {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .dock-btn:hover {
+      transform: translateY(-7px) scale(1.14);
+      background: rgba(255, 255, 255, 0.14);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+    }
+
+    .dock-tooltip {
+      position: absolute;
+      bottom: calc(100% + 12px);
+      left: 50%;
+      transform: translateX(-50%) translateY(6px) scale(0.92);
+      opacity: 0;
+      pointer-events: none;
+      white-space: nowrap;
+      padding: 6px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.95);
+      background: rgba(18, 22, 30, 0.72);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.55);
+      transition: all 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .dock-btn:hover .dock-tooltip {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0) scale(1);
+    }
+  </style>
+</head>
+<body class="w-screen h-screen overflow-hidden text-white select-none">
+
+  <!-- Full Screen Console Container -->
+  <div class="relative w-full h-full overflow-hidden bg-neutral-950">
+
+    <!-- Dynamic Wallpapers -->
+    <div id="wallpaper-container" class="absolute inset-0 w-full h-full"></div>
+
+    <!-- Vignette & Readability Gradient Overlays -->
+    <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/35 pointer-events-none"></div>
+    <div class="absolute inset-0 bg-gradient-to-r from-black/50 via-transparent to-black/30 pointer-events-none"></div>
+
+    <!-- Top Bar: Clock & Toast Notification -->
+    <div class="relative z-20 flex items-center justify-between px-6 sm:px-12 pt-6 sm:pt-8">
+      <div id="status-toast" class="opacity-0 -translate-y-2 transition-all duration-300 glass-pill px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-medium text-white/90 flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span id="toast-text">Ready</span>
+      </div>
+
+      <div id="clock" class="ml-auto text-base sm:text-xl font-semibold tracking-wide text-white/95 drop-shadow">
+        3:56 PM
+      </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="relative z-20 h-[calc(100%-84px)] flex flex-col justify-end px-6 sm:px-12 pb-6 sm:pb-8 gap-6 sm:gap-8">
+
+      <!-- Games Row (Extra horizontal padding prevents active card border from clipping) -->
+      <div id="games-row" class="flex items-end gap-4 sm:gap-6 overflow-x-auto px-4 sm:px-6 -mx-4 sm:-mx-6 pt-8 pb-3 no-scrollbar">
+        <!-- Populated by JavaScript -->
+      </div>
+
+      <!-- Bottom System Dock -->
+      <div class="flex justify-center">
+        <nav class="glass-dock px-4 sm:px-6 py-2 rounded-2xl flex items-center gap-3 sm:gap-6 shadow-2xl">
+          <!-- Trophies -->
+          <button data-dock="Trophies — 42 Platinum, 189 Gold" class="dock-btn text-white/75 hover:text-white">
+            <span class="dock-tooltip">Trophies</span>
+            <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 21h8m-4-4v4m-5-8a5 5 0 01-5-5V6h4m10 7a5 5 0 005-5V6h-4M7 4h10v5a5 5 0 01-10 0V4z"/>
+            </svg>
+          </button>
+
+          <!-- Music -->
+          <button data-dock="Media Player — Synthwave Chill Mix" class="dock-btn text-white/75 hover:text-white">
+            <span class="dock-tooltip">Music</span>
+            <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/>
+            </svg>
+          </button>
+
+          <!-- Notifications -->
+          <button data-dock="Notifications — Spider-Man Update Installed" class="dock-btn text-white/75 hover:text-white">
+            <span class="dock-tooltip">Notifications</span>
+            <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+            </svg>
+          </button>
+
+          <!-- Home -->
+          <button data-dock="Home Dashboard" class="dock-btn text-white">
+            <span class="dock-tooltip">Home</span>
+            <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 3l9 8h-3v9h-5v-6h-2v6H6v-9H3l9-8z"/>
+            </svg>
+          </button>
+
+          <!-- Friends / Party -->
+          <button data-dock="Friends — 3 Online in Party" class="dock-btn text-white/75 hover:text-white">
+            <span class="dock-tooltip">Friends</span>
+            <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+          </button>
+
+          <!-- User Profile -->
+          <button data-dock="Player Profile — Online" class="dock-btn">
+            <span class="dock-tooltip">Profile (Online)</span>
+            <div class="relative flex items-center justify-center">
+              <div class="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-400 flex items-center justify-center text-[11px] font-bold text-white ring-2 ring-white/40">
+                P1
+              </div>
+              <span class="w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-neutral-900 -ml-1.5 mt-3.5"></span>
+            </div>
+          </button>
+
+          <!-- Power -->
+          <button data-dock="Power Options — Rest Mode / Turn Off" class="dock-btn text-white/75 hover:text-rose-400">
+            <span class="dock-tooltip">Power</span>
+            <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v9m6.364-6.364a9 9 0 11-12.728 0"/>
+            </svg>
+          </button>
+        </nav>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const games = [
+      {
+        id: 'spiderman',
+        title: 'SPIDER-MAN',
+        subtitle: 'MILES MORALES',
+        progress: '45%',
+        status: 'In progress',
+        action: 'Resume',
+        wallpaper: 'https://images.unsplash.com/photo-1635805737707-575885ab0820?auto=format&fit=crop&w=1600&q=80',
+        cover: 'https://images.unsplash.com/photo-1635805737707-575885ab0820?auto=format&fit=crop&w=800&q=80',
+        accent: 'from-rose-600/70 via-black/40 to-black/95'
+      },
+      {
+        id: 'coldwar',
+        title: 'CALL OF DUTY',
+        subtitle: 'BLACK OPS COLD WAR',
+        progress: '78%',
+        status: 'Campaign',
+        action: 'Play',
+        wallpaper: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1600&q=80',
+        cover: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80',
+        accent: 'from-amber-700/60 via-black/40 to-black/95'
+      },
+      {
+        id: 'godofwar',
+        title: 'GOD OF WAR',
+        subtitle: 'RAGNARÖK',
+        progress: '62%',
+        status: 'In progress',
+        action: 'Continue',
+        wallpaper: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1600&q=80',
+        cover: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80',
+        accent: 'from-cyan-700/60 via-black/40 to-black/95'
+      },
+      {
+        id: 'horizon',
+        title: 'HORIZON',
+        subtitle: 'FORBIDDEN WEST',
+        progress: '30%',
+        status: 'In progress',
+        action: 'Resume',
+        wallpaper: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1600&q=80',
+        cover: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=800&q=80',
+        accent: 'from-teal-600/60 via-black/40 to-black/95'
+      },
+      {
+        id: 'valhalla',
+        title: "ASSASSIN'S CREED",
+        subtitle: 'VALHALLA',
+        progress: '91%',
+        status: 'Almost Done',
+        action: 'Play',
+        wallpaper: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=1600&q=80',
+        cover: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=800&q=80',
+        accent: 'from-indigo-700/60 via-black/40 to-black/95'
+      }
+    ];
+
+    let activeIndex = 0;
+    const wallpaperContainer = document.getElementById('wallpaper-container');
+    const gamesRow = document.getElementById('games-row');
+    const toastEl = document.getElementById('status-toast');
+    const toastTextEl = document.getElementById('toast-text');
+    let toastTimeout;
+
+    function showToast(message) {
+      toastTextEl.textContent = message;
+      toastEl.classList.remove('opacity-0', '-translate-y-2');
+      toastEl.classList.add('opacity-100', 'translate-y-0');
+
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toastEl.classList.add('opacity-0', '-translate-y-2');
+        toastEl.classList.remove('opacity-100', 'translate-y-0');
+      }, 2400);
+    }
+
+    function initWallpapers() {
+      games.forEach((game, idx) => {
+        const layer = document.createElement('div');
+        layer.className = `wallpaper-layer absolute inset-0 bg-cover bg-center ${idx === activeIndex ? 'opacity-100 scale-100' : 'opacity-0 scale-105'}`;
+        layer.style.backgroundImage = `url('${game.wallpaper}')`;
+        layer.dataset.index = idx;
+        wallpaperContainer.appendChild(layer);
+      });
+    }
+
+    function updateWallpaper() {
+      const layers = wallpaperContainer.querySelectorAll('.wallpaper-layer');
+      layers.forEach((layer, idx) => {
+        if (idx === activeIndex) {
+          layer.classList.remove('opacity-0', 'scale-105');
+          layer.classList.add('opacity-100', 'scale-100');
+        } else {
+          layer.classList.add('opacity-0', 'scale-105');
+          layer.classList.remove('opacity-100', 'scale-100');
+        }
+      });
+    }
+
+    function renderGames() {
+      gamesRow.innerHTML = '';
+
+      games.forEach((game, idx) => {
+        const isActive = idx === activeIndex;
+        const card = document.createElement('button');
+        card.type = 'button';
+
+        card.className = `game-tile relative shrink-0 rounded-2xl overflow-hidden text-left cursor-pointer focus:outline-none ${
+          isActive
+            ? 'active w-44 sm:w-56 h-48 sm:h-60'
+            : 'w-28 sm:w-36 h-28 sm:h-36 opacity-85 hover:opacity-100'
+        }`;
+
+        card.style.backgroundImage = `url('${game.cover}')`;
+        card.style.backgroundSize = 'cover';
+        card.style.backgroundPosition = 'center';
+
+        card.innerHTML = `
+          <div class="absolute inset-0 bg-gradient-to-t ${game.accent}"></div>
+
+          <div class="relative z-10 h-full p-3 sm:p-4 flex flex-col justify-between">
+            <div>
+              <p class="text-[10px] sm:text-xs font-extrabold tracking-wider uppercase drop-shadow">${game.title}</p>
+              <p class="text-[9px] sm:text-[10px] tracking-widest text-white/75 uppercase">${game.subtitle}</p>
+            </div>
+
+            ${
+              isActive
+                ? `<div class="space-y-1.5">
+                    <div class="text-lg sm:text-2xl font-extrabold leading-none">${game.progress}</div>
+                    <span class="inline-block text-[10px] px-2 py-0.5 rounded bg-black/55 border border-white/25 text-white/90">
+                      ${game.status}
+                    </span>
+                    <div class="flex items-center gap-1.5 text-xs font-medium text-white/90 pt-0.5">
+                      <span class="w-2.5 h-2.5 rounded-full border border-white/80 inline-block"></span>
+                      <span>${game.action}</span>
+                    </div>
+                  </div>`
+                : `<div class="text-[10px] font-medium text-white/80 truncate">${game.progress}</div>`
+            }
+          </div>
+        `;
+
+        card.addEventListener('click', () => {
+          if (activeIndex === idx) {
+            showToast(`Launching ${game.title}...`);
+          } else {
+            activeIndex = idx;
+            updateWallpaper();
+            renderGames();
+            showToast(`Selected ${game.title}`);
+          }
+        });
+
+        gamesRow.appendChild(card);
+      });
+    }
+
+    // Live Clock
+    function updateClock() {
+      const now = new Date();
+      const formatted = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      document.getElementById('clock').textContent = formatted;
+    }
+
+    // Keyboard Navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') {
+        activeIndex = (activeIndex + 1) % games.length;
+        updateWallpaper();
+        renderGames();
+      } else if (e.key === 'ArrowLeft') {
+        activeIndex = (activeIndex - 1 + games.length) % games.length;
+        updateWallpaper();
+        renderGames();
+      } else if (e.key === 'Enter') {
+        showToast(`Launching ${games[activeIndex].title}...`);
+      }
+    });
+
+    // Dock Buttons
+    document.querySelectorAll('.dock-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        showToast(btn.dataset.dock);
+      });
+    });
+
+    // Initialize
+    initWallpapers();
+    renderGames();
+    updateClock();
+    setInterval(updateClock, 10000);
+  </script>
+</body>
+</html>
